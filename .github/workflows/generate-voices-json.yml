@@ -1,0 +1,98 @@
+name: Generate Students JSON With Voices
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/generate-voices-json.yml'
+
+jobs:
+  generate-json:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install edge-tts
+        run: pip install edge-tts
+
+      - name: Synthesize Names & Build JSON
+        run: |
+          python3 - << 'PY'
+          import asyncio, base64, json, edge_tts
+
+          # الصوت العربي: ar-SY-AmanyNeural (أنثوي سوري) أو ar-SY-LaithNeural (ذكوري سوري)
+          # للصوت الإنجليزي استبدله بـ: en-US-AriaNeural
+          VOICE = "en-US-AriaNeural"
+          USE_ENGLISH = True  # غيّرها إلى True للنطق بالإنجليزية
+
+          students_data = [
+              ("st_01", "عبيدة", "⭐", "#FF6B6B", "Obaida"),
+              ("st_02", "محمد حوى", "🦁", "#FF9F1C", "Mohammad Hawwa"),
+              ("st_03", "عبادة", "🚀", "#2EC4B6", "Obada"),
+              ("st_04", "حمزة", "⚽", "#3A86FF", "Hamza"),
+              ("st_05", "عثمان", "🐼", "#8338EC", "Othman"),
+              ("st_06", "تيم", "🦊", "#FF006E", "Taym"),
+              ("st_07", "أنس", "🌟", "#06D6A0", "Anas"),
+              ("st_08", "أنس حلبية", "🎨", "#118AB2", "Anas Halabiya"),
+              ("st_09", "أحمد الخطيب", "🌈", "#F77F00", "Ahmad Al-Khatib"),
+              ("st_10", "عبد الله مصري", "🐬", "#9B5DE5", "Abdullah Masri"),
+              ("st_11", "عبد الله عكرة", "🐝", "#00BBF9", "Abdullah Akra"),
+          ]
+
+          async def build():
+              students = []
+              audio_bundle = {}
+              for sid, ar_name, emoji, color, en_name in students_data:
+                  text = f"Congratulations {en_name}!" if USE_ENGLISH else f"مبروك يا {ar_name}!"
+                  mp3_path = f"{sid}.mp3"
+                  await edge_tts.Communicate(text, VOICE).save(mp3_path)
+                  b64 = base64.b64encode(open(mp3_path, "rb").read()).decode("ascii")
+                  audio_bundle[f"voice_{sid}"] = f"data:audio/mpeg;base64,{b64}"
+                  students.append({
+                      "id": sid,
+                      "name": ar_name,
+                      "emoji": emoji,
+                      "color": color,
+                      "active": True,
+                      "phonetic": en_name,
+                      "hasCustomVoice": True
+                  })
+
+              payload = {
+                  "version": 1,
+                  "state": {
+                      "lang": "ar",
+                      "activeClassId": "cls_students_01",
+                      "classes": [{
+                          "id": "cls_students_01",
+                          "name": "صف التلاميذ",
+                          "usedIds": [],
+                          "students": students
+                      }],
+                      "settings": {
+                          "noRepeat": True, "spinDuration": 4, "muted": False, "quietMode": False,
+                          "volSpin": 0.7, "volWin": 0.8, "volSpeech": 1, "volCeiling": 0.9,
+                          "spinSound": "wood", "winSound": "tada", "encourageSound": "chime",
+                          "hasCustomSpin": False, "hasCustomWin": False, "hasCustomEnc": False,
+                          "tplAr": "مبروك يا {name}!", "tplEn": "Congratulations {name}!",
+                          "speechRate": 0.95, "speechPitch": 1.05,
+                          "taskEnabled": False, "taskTimerSec": 30,
+                          "tasks": ["اقرأ جملة بصوت واضح 📖", "أجب عن سؤال المعلم 💡", "غنِّ مقطعاً قصيراً 🎵", "أعطنا مثالاً من عندك 🌟"]
+                      }
+                  },
+                  "audioBundle": audio_bundle
+              }
+              with open("students-class-with-audio.json", "w", encoding="utf-8") as f:
+                  json.dump(payload, f, ensure_ascii=False, indent=2)
+
+          asyncio.run(build())
+          PY
+
+      - name: Upload JSON With Voices
+        uses: actions/upload-artifact@v4
+        with:
+          name: students-class-with-audio
+          path: students-class-with-audio.json
