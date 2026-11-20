@@ -1,0 +1,62 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract HTML from ZIP
+        shell: pwsh
+        run: |
+          Expand-Archive -Force classroom-wheel-android-project.zip -DestinationPath .
+          Copy-Item "classroom-wheel-android\app\src\main\assets\index.html" -Destination "index.html"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pywebview & PyInstaller
+        run: pip install pywebview pyinstaller
+
+      - name: Create Launcher Script
+        shell: pwsh
+        run: |
+          @"
+          import os, sys, webview
+
+          base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+          html_path = os.path.join(base_dir, 'index.html')
+          data_dir = os.path.join(os.path.expanduser('~'), '.classroom_wheel_data')
+          os.makedirs(data_dir, exist_ok=True)
+
+          webview.settings['ALLOW_DOWNLOADS'] = True
+          webview.create_window(
+              'العجلة الدوارة',
+              url=html_path,
+              width=1100,
+              height=760,
+              min_size=(480, 600)
+          )
+          webview.start(
+              http_server=True,
+              http_port=18923,
+              private_mode=False,
+              storage_path=data_dir
+          )
+          "@ | Set-Content -Encoding UTF8 main.py
+
+      - name: Build Standalone EXE
+        run: pyinstaller --onefile --windowed --name ClassroomWheel --add-data "index.html;." main.py
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: classroom-wheel-exe
+          path: dist/ClassroomWheel.exe
